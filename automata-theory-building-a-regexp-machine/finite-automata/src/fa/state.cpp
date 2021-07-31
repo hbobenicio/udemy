@@ -42,18 +42,18 @@ namespace fa
     ostream& operator<<(ostream& os, const State& state)
     {
         if (state.accepting) {
-            os << 'e';
+            os << "State{e}";
             return os;
         }
 
         os << "State{ ";
         for (const auto& [symbol, states]: state.transitions) {
-            os << symbol << " -> [";
+            os << symbol << " -> [ ";
             for (size_t i = 0; i < states.size(); i++) {
                 if (i != 0) os << ", ";
                 os << *states[i];
             }
-            os << "]";
+            os << " ]";
         }
         os << " }";
 
