@@ -8,7 +8,8 @@ project('finite-automata', 'cpp',
 )
 
 sources = [
-    'src/fa/state.cpp',
+    'src/fa/nfa/state.cpp',
+    'src/fa/nfa/nfa.cpp',
     'src/main.cpp',
 ]
 

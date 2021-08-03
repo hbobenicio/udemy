@@ -1,0 +1,5 @@
+alias c="meson compile"
+alias r="./finite-automata"
+alias cr="c && r"
+alias d="gdb ./finite-automata"
+alias g="d"

@@ -62,3 +62,7 @@ Formal Definition
 - transition function - Q x SIGMA -> 2^Q
 - q0 - Starting state - A
 - F - Set of accepting states - {B}
+
+### Section 2 - RegExp NFA fragments
+
+
