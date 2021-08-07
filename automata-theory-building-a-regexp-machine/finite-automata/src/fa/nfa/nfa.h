@@ -19,9 +19,11 @@ namespace fa::nfa
     protected:
         virtual ~Visitor() = default;
     public:
-        virtual void visitState(const State* state) = 0;
-        virtual void visitTransition(const State* from, const std::string& symbol, const State* to) = 0;
-        virtual void visitNFA(NFA nfa) = 0;
+        // TODO These methods could be improved. For instance, they could return a bool, indicating if
+        //      the traversal should stop or continue.
+        virtual bool visitState(const State* state) = 0;
+        virtual bool visitTransition(const State* from, const std::string& symbol, const State* to) = 0;
+        virtual bool visitNFA(NFA nfa) = 0;
     };
 
     class GraphDumpVisitor: public Visitor
@@ -35,9 +37,9 @@ namespace fa::nfa
     public:
         GraphDumpVisitor(std::string_view title);
 
-        void visitNFA(NFA nfa) override;
-        void visitState(const State* state) override;
-        void visitTransition(const State* from, const std::string& symbol, const State* to) override;
+        bool visitNFA(NFA nfa) override;
+        bool visitState(const State* state) override;
+        bool visitTransition(const State* from, const std::string& symbol, const State* to) override;
 
         void dump_graph(const std::string& file_path) const;
     };
@@ -52,11 +54,13 @@ namespace fa::nfa
      * TODO rename this to Fragment maybe. Analyze later if this makes sense...
      */
     class NFA {
-    protected:
-        std::shared_ptr<State> in;
-        std::shared_ptr<State> out;
+    // protected:
+        // std::shared_ptr<State> in;
+        // std::shared_ptr<State> out;
 
     public:
+        std::shared_ptr<State> in;
+        std::shared_ptr<State> out;
         /**
          * Standard generic constructor.
          * 
@@ -111,9 +115,34 @@ namespace fa::nfa
          * 
          * "Loops" the given machine zero or more times.
          */
-        friend NFA kleene(NFA a);
+        friend NFA kleene_naive(NFA a);
+
+        /**
+         * Optimal kleene operator.
+         * 
+         * Just adds two epsilon transitions:
+         *    A.in  -e-> A.out , and
+         *    A.out -e-> A.in
+         */
+        friend NFA zeroOrMore(NFA a);
+
+        /**
+         * Optimal plus '+' operator.
+         * 
+         * Just adds an epsilon transition from A.out to A.in.
+         */
+        friend NFA oneOrMore(NFA a);
+
+        /**
+         * Optimal question mark '?' (optional) operator.
+         * 
+         * Just adds an epsilon transition from A.in to A.out.
+         */
+        friend NFA opt(NFA a);
 
         void accept(Visitor& visitor) const;
+
+        bool matches(std::string_view input) const;
     };
 
     /**
@@ -153,11 +182,17 @@ namespace fa::nfa
      */
     NFA digit_naive();
 
-
     /**
      * Naive approach to general character class [from-to] <=> (from|...|to).
      */
     NFA char_range_naive(char from, char to);
+
+    /**
+     * Optimal character class (range) pattern.
+     * 
+     * Just union these sanely with only transitions, without more states.
+     */
+    NFA range(char from, char to);
 }
 
 #endif

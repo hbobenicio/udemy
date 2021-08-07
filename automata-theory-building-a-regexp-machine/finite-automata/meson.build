@@ -1,3 +1,8 @@
+# For using the clang sanitizer:
+# $ cd builddir
+# $ meson configure -Db_sanitizer=address -Db_lundef=false # you can check if it is ok with `meson configure`
+# $ meson compile
+# $ ./finite-automata
 project('finite-automata', 'cpp',
     version : '0.1.0',
     default_options : [

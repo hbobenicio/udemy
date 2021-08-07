@@ -19,21 +19,23 @@ namespace fa::nfa
         //noop
     }
 
-    void GraphDumpVisitor::visitNFA(NFA nfa)
+    bool GraphDumpVisitor::visitNFA(NFA nfa)
     {
         (void) nfa;
-        //noop
+        return true;
     }
 
-    void GraphDumpVisitor::visitState(const State* state)
+    bool GraphDumpVisitor::visitState(const State* state)
     {
         std::string state_label = "S" + to_string(this->state_count);
 
         this->state_labels[state] = state_label;
         this->state_count++;
+
+        return true;
     }
 
-    void GraphDumpVisitor::visitTransition(const State* from, const std::string& symbol, const State* to)
+    bool GraphDumpVisitor::visitTransition(const State* from, const std::string& symbol, const State* to)
     {
         std::string symbol_label = (symbol == EPSILON) ? "ε" : symbol;
 
@@ -47,6 +49,8 @@ namespace fa::nfa
         ss << "  " << from_label->second << " -> " << to_label->second << " [label=\"" << symbol_label << "\"]";
 
         this->transitions.push_back(ss.str());
+
+        return true;
     }
 
     void GraphDumpVisitor::dump_graph(const std::string& file_path) const
@@ -148,7 +152,7 @@ namespace fa::nfa
         return NFA{ starting_state,  accepting_state};
     }
 
-    NFA kleene(NFA a)
+    NFA kleene_naive(NFA a)
     {
         // epsilon machine, with in=A, out=B and only transition A -e-> B
         NFA resulting;
@@ -167,7 +171,7 @@ namespace fa::nfa
 
     NFA plus_naive(NFA a)
     {
-        return a + kleene(a);
+        return a + kleene_naive(a);
     }
 
     NFA question_mark_naive(NFA a)
@@ -203,13 +207,53 @@ namespace fa::nfa
         return resulting;
     }
 
+    NFA zeroOrMore(NFA a)
+    {
+        a.in->add_transition(EPSILON, a.out);
+        a.out->add_transition(EPSILON, a.in);
+
+        return a;
+    }
+
+    NFA oneOrMore(NFA a)
+    {
+        a.out->add_transition(EPSILON, a.in);
+
+        return a;
+    }
+
+    NFA opt(NFA a)
+    {
+        a.in->add_transition(EPSILON, a.out);
+
+        return a;
+    }
+
+    NFA range(char from, char to)
+    {
+        assert(from <= to);
+
+        NFA resulting{ from };
+        for (char c = from + 1; c <= to; c++) {
+            resulting.in->add_transition(string{c}, resulting.out);
+        }
+
+        return resulting;
+    }
+
     void NFA::accept(Visitor& visitor) const
     {
         set<const State*> visited_states;
-        // std::set<std::tuple<std::shared_ptr<State>, const std::string&, std::shared_ptr<State>>> visited_transitions;
 
         visitor.visitNFA(*this);
-        this->in->accept(visitor, visited_states/*, visited_transitions*/);
-        this->in->accept(visitor, visited_states/*, visited_transitions*/);
+        this->in->accept(visitor, visited_states);
+        this->in->accept(visitor, visited_states);
+    }
+
+    bool NFA::matches(string_view input) const
+    {
+        set<const State*> visited_states;
+
+        return this->in->matches(visited_states, input);
     }
 }

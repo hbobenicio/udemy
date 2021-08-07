@@ -32,9 +32,10 @@ namespace fa::nfa
 
         void accept(
             Visitor& visitor,
-            std::set<const State*>& visited_states/*,
-            std::set<std::tuple<std::shared_ptr<State>, const std::string&, std::shared_ptr<State>>>& visited_transitions*/
+            std::set<const State*>& visited_states
         ) const;
+
+        bool matches(std::set<const State*>& visited_states, std::string_view input) const;
         
         [[nodiscard]]
         bool is_accepting() const;
