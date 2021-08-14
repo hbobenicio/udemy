@@ -38,11 +38,17 @@ const nfa = struct {
     };
     pub const TransitionValue = ArrayList(usize);
 
+    pub const NFA = struct {
+        in: usize,
+        out: usize,
+    };
+
     pub const Graph = struct {
         allocator: *Allocator,
         states: ArrayList(State),
         transitions: AutoHashMap(SymbolTransitionKey, TransitionValue),
         e_transitions: AutoHashMap(EpsilonTransitionKey, TransitionValue),
+        nfa: NFA,
 
         pub fn init(allocator: *Allocator) @This() {
             return @This() {
@@ -50,6 +56,7 @@ const nfa = struct {
                 .states = ArrayList(State).init(allocator),
                 .transitions = AutoHashMap(SymbolTransitionKey, TransitionValue).init(allocator),
                 .e_transitions = AutoHashMap(EpsilonTransitionKey, TransitionValue).init(allocator),
+                .nfa = NFA{.in = 0, .out = 0},
             };
         }
 
@@ -101,98 +108,80 @@ const nfa = struct {
                 result.entry.value.appendAssumeCapacity(to);
             }
         }
-    };
 
-    pub const NFA = struct {
-        g: *Graph,
-        in: usize,
-        out: usize,
+        pub fn char(self: *@This(), c: Symbol) NFA {
+            const s0 = self.addState(false);
+            const s1 = self.addState(true);
 
-        pub fn init(g: *Graph) NFA {
-            return NFA {
-                .g = g,
-                .in = undefined,
-                .out = undefined
-            };
-        }
-
-        pub fn char(self: *const @This(), c: Symbol) NFA {
-            const s0 = self.g.addState(false);
-            const s1 = self.g.addState(true);
-
-            self.g.addSymbolTransition(s0, c, s1);
+            self.addSymbolTransition(s0, c, s1);
 
             return NFA {
-                .g = self.g,
                 .in = s0,
                 .out = s1,
             };
         }
 
-        pub fn epsilon(self: *const @This()) NFA {
-            const s0: usize = self.g.addState(false);
-            const s1: usize = self.g.addState(true);
+        pub fn epsilon(self: *@This()) NFA {
+            const s0: usize = self.addState(false);
+            const s1: usize = self.addState(true);
 
-            self.g.addEpsilonTransition(s0, s1);
+            self.addEpsilonTransition(s0, s1);
 
             return NFA {
-                .g = self.g,
                 .in = s0,
                 .out = s1,
             };
         }
 
-        pub fn concat(self: *const @This(), a: NFA, b: NFA) NFA {
-            self.g.addEpsilonTransition(a.out, b.in);
-            self.g.getState(a.out).accepting = false;
-            self.g.getState(b.out).accepting = true;
+        pub fn concat(self: *@This(), a: NFA, b: NFA) NFA {
+            self.addEpsilonTransition(a.out, b.in);
+            self.getState(a.out).accepting = false;
+            self.getState(b.out).accepting = true;
             return NFA {
-                .g = self.g,
                 .in = a.in,
                 .out = b.out,
             };
         }
 
-        pub fn disjunction(self: *const @This(), a: NFA, b: NFA) NFA {
-            const start: usize = self.g.addState(false);
-            const end: usize = self.g.addState(true);
+        pub fn disjunction(self: *@This(), a: NFA, b: NFA) NFA {
+            const start: usize = self.addState(false);
+            const end: usize = self.addState(true);
 
-            self.g.addEpsilonTransition(start, a.in);
-            self.g.addEpsilonTransition(start, b.in);
-            self.g.addEpsilonTransition(a.out, end);
-            self.g.addEpsilonTransition(b.out, end);
+            self.addEpsilonTransition(start, a.in);
+            self.addEpsilonTransition(start, b.in);
+            self.addEpsilonTransition(a.out, end);
+            self.addEpsilonTransition(b.out, end);
 
-            self.g.getState(a.out).accepting = false;
-            self.g.getState(b.out).accepting = false;
+            self.getState(a.out).accepting = false;
+            self.getState(b.out).accepting = false;
 
             return NFA {
-                .g = self.g,
                 .in = start,
                 .out = end,
             };
         }
 
-        pub fn zeroOrMore(self: *const @This(), a: NFA) NFA {
+        pub fn zeroOrMore(self: *@This(), a: NFA) NFA {
             // zero...
-            self.g.addEpsilonTransition(a.in, a.out);
+            self.addEpsilonTransition(a.in, a.out);
             // or more...
-            self.g.addEpsilonTransition(a.out, a.in);
+            self.addEpsilonTransition(a.out, a.in);
             return a;
         }
 
-        pub fn oneOrMore(self: *const @This(), a: NFA) NFA {
+        pub fn oneOrMore(self: *@This(), a: NFA) NFA {
             // one: ok already
             // or more...
-            self.g.addEpsilonTransition(a.out, a.in);
+            self.addEpsilonTransition(a.out, a.in);
             return a;
         }
 
-        pub fn optional(self: *const @This(), a: NFA) NFA {
-            self.g.addEpsilonTransition(a.in, a.out);
+        pub fn optional(self: *@This(), a: NFA) NFA {
+            self.addEpsilonTransition(a.in, a.out);
             return a;
         }
 
-        pub fn range(self: *const @This(), from: Symbol, to: Symbol) NFA {
+        pub fn range(self: *@This(), from: Symbol, to: Symbol) NFA {
             assert(from <= to);
 
             // 2 states: [A, B]; 1 transition: A -(from)-> B
@@ -203,7 +192,7 @@ const nfa = struct {
 
             // loop over inclusive range
             while (i <= to) : (i += 1) {
-                self.g.addSymbolTransition(resulting.in, i, resulting.out);
+                self.addSymbolTransition(resulting.in, i, resulting.out);
             }
 
             return resulting;
@@ -248,10 +237,9 @@ test "nfa: elementary machines: char" {
     defer arena.deinit();
     const allocator: *Allocator = &arena.allocator;
     var g: nfa.Graph = nfa.Graph.init(allocator);
-    const NFA = nfa.NFA.init(&g);
 
     const s: nfa.Symbol = 'a';
-    const a = NFA.char(s);
+    const a = g.char(s);
     
     // state expectations
     expectEqual(@as(usize, 2), g.states.items.len);
@@ -277,9 +265,8 @@ test "nfa: elementary machines: epsilon" {
     defer arena.deinit();
     const allocator: *Allocator = &arena.allocator;
     var g: nfa.Graph = nfa.Graph.init(allocator);
-    const NFA = nfa.NFA.init(&g);
 
-    const e = NFA.epsilon();
+    const e = g.epsilon();
 
     // state expectations
     expectEqual(@as(usize, 2), g.states.items.len);
@@ -304,11 +291,10 @@ test "nfa: elementary operators: concat" {
     defer arena.deinit();
     const allocator: *Allocator = &arena.allocator;
     var g: nfa.Graph = nfa.Graph.init(allocator);
-    const NFA = nfa.NFA.init(&g);
 
-    const a = NFA.char('a');
-    const b = NFA.char('b');
-    const ab = NFA.concat(a, b);
+    const a = g.char('a');
+    const b = g.char('b');
+    const ab = g.concat(a, b);
 
     // states expectations
     expectEqual(@as(usize, 4), g.states.items.len);
@@ -339,11 +325,10 @@ test "nfa: elementary operators: disjunction (op: '|')" {
     defer arena.deinit();
     const allocator: *Allocator = &arena.allocator;
     var g: nfa.Graph = nfa.Graph.init(allocator);
-    const NFA = nfa.NFA.init(&g);
 
-    const a = NFA.char('a');
-    const b = NFA.char('b');
-    const a_or_b = NFA.disjunction(a, b);
+    const a = g.char('a');
+    const b = g.char('b');
+    const a_or_b = g.disjunction(a, b);
 
     // states expectations
     expectEqual(@as(usize, 6), g.states.items.len);
@@ -369,10 +354,9 @@ test "nfa: elementary operators: zeroOrMore (kleene star) (op: '*')" {
     defer arena.deinit();
     const allocator: *Allocator = &arena.allocator;
     var g: nfa.Graph = nfa.Graph.init(allocator);
-    const NFA = nfa.NFA.init(&g);
 
-    const a = NFA.char('a');
-    const m = NFA.zeroOrMore(a);
+    const a = g.char('a');
+    const m = g.zeroOrMore(a);
 
     // states expectations
     expectEqual(@as(usize, 2), g.states.items.len);
@@ -396,10 +380,9 @@ test "nfa: syntatic sugar: oneOrMore (op: '+')" {
     defer arena.deinit();
     const allocator: *Allocator = &arena.allocator;
     var g: nfa.Graph = nfa.Graph.init(allocator);
-    const NFA = nfa.NFA.init(&g);
 
-    const a = NFA.char('a');
-    const m = NFA.oneOrMore(a);
+    const a = g.char('a');
+    const m = g.oneOrMore(a);
 
     // states expectations
     expectEqual(@as(usize, 2), g.states.items.len);
@@ -421,10 +404,9 @@ test "nfa: syntatic sugar: optional (op: '?')" {
     defer arena.deinit();
     const allocator: *Allocator = &arena.allocator;
     var g: nfa.Graph = nfa.Graph.init(allocator);
-    const NFA = nfa.NFA.init(&g);
 
-    const a = NFA.char('a');
-    const m = NFA.optional(a);
+    const a = g.char('a');
+    const m = g.optional(a);
 
     // states expectations
     expectEqual(@as(usize, 2), g.states.items.len);
@@ -446,9 +428,8 @@ test "nfa: syntatic sugar: range ([X-Y])" {
     defer arena.deinit();
     const allocator: *Allocator = &arena.allocator;
     var g: nfa.Graph = nfa.Graph.init(allocator);
-    const NFA = nfa.NFA.init(&g);
 
-    const digit = NFA.range('0', '9');
+    const digit = g.range('0', '9');
 
     // states expectations
     expectEqual(@as(usize, 2), g.states.items.len);
