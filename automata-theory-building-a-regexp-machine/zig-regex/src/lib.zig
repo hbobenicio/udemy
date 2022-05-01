@@ -4,6 +4,7 @@ const Allocator = std.mem.Allocator;
 const StringHashMap = std.StringHashMap;
 const AutoHashMap = std.AutoHashMap;
 const ArrayList = std.ArrayList;
+const TailQueue = std.TailQueue;
 const assert = std.debug.assert;
 
 const nfa = struct {
@@ -16,31 +17,34 @@ const nfa = struct {
     //     epsilon,
     //     char: u8,
     // };
-
-    pub const StateLabelCap: usize = 10;
     pub const State = struct {
         accepting: bool,
-        id: usize,
-        label_buf: [StateLabelCap]u8,
-        label: []u8,
+        id: StateId,
 
-        pub fn labelPrint(self: *@This(), comptime fmt: []const u8, args: anytype) std.fmt.BufPrintError!void {
-            self.label = try std.fmt.bufPrint(&self.label_buf, fmt, args);
+        pub fn loadTable(self: *const @This(), table: *Table, visited_states: *AutoHashMap(StateId, void)) void {
+            if (visited_states.get(self.id) == null)
+                return;
+
+            visited_states.put(self.id, void) catch @panic("out of memory");
+            table.
+            // for each transition, visit it
+            // for each epsilon transition, visit it
         }
     };
+    pub const StateId = usize;
 
     pub const SymbolTransitionKey = struct {
-        from: usize,
+        from: StateId,
         symbol: Symbol,
     };
     pub const EpsilonTransitionKey = struct {
-        from: usize,
+        from: StateId,
     };
-    pub const TransitionValue = ArrayList(usize);
+    pub const TransitionValue = ArrayList(StateId);
 
     pub const NFA = struct {
-        in: usize,
-        out: usize,
+        in: StateId,
+        out: StateId,
     };
 
     pub const Graph = struct {
@@ -48,6 +52,7 @@ const nfa = struct {
         states: ArrayList(State),
         transitions: AutoHashMap(SymbolTransitionKey, TransitionValue),
         e_transitions: AutoHashMap(EpsilonTransitionKey, TransitionValue),
+        symbols: AutoHashMap(Symbol, void),
         nfa: NFA,
 
         pub fn init(allocator: *Allocator) @This() {
@@ -56,11 +61,13 @@ const nfa = struct {
                 .states = ArrayList(State).init(allocator),
                 .transitions = AutoHashMap(SymbolTransitionKey, TransitionValue).init(allocator),
                 .e_transitions = AutoHashMap(EpsilonTransitionKey, TransitionValue).init(allocator),
-                .nfa = NFA{.in = 0, .out = 0},
+                .symbols = AutoHashMap(Symbol, void).init(allocator),
+                .nfa = undefined,
             };
         }
 
         pub fn deinit(self: *@This()) void {
+            self.symbols.deinit();
             self.e_transitions.deinit();
             self.transitions.deinit();
             self.states.deinit();
@@ -70,11 +77,7 @@ const nfa = struct {
             var new_state = State {
                 .accepting = accepting,
                 .id = self.states.items.len,
-                .label_buf = [_]u8{0} ** StateLabelCap,
-                .label = undefined,
             };
-            new_state.labelPrint("S{}", .{new_state.id}) catch unreachable;
-
             self.states.append(new_state) catch @panic("out of memory");
             return self.states.items.len - 1;
         }
@@ -82,6 +85,19 @@ const nfa = struct {
         pub inline fn getState(self: *@This(), state_id: usize) *State {
             assert(state_id < self.states.items.len);
             return &self.states.items[state_id];
+        }
+
+        pub inline fn getInState(self: *@This()) *State {
+            return self.getState(self.nfa.in);
+        }
+
+        pub inline fn getStateConst(self: *const @This(), state_id: usize) *const State {
+            assert(state_id < self.states.items.len);
+            return &self.states.items[state_id];
+        }
+
+        pub inline fn getInStateConst(self: *const @This()) *const State {
+            return self.getStateConst(self.nfa.in);
         }
 
         pub fn addSymbolTransition(self: *@This(), from: usize, symbol: Symbol, to: usize) void {
@@ -93,9 +109,10 @@ const nfa = struct {
             if (result.found_existing) {
                 result.entry.value.append(to) catch @panic("out of memory");
             } else {
-                result.entry.value = TransitionValue.initCapacity(self.allocator, 1) catch @panic("out of memory");
-                result.entry.value.appendAssumeCapacity(to);
+                result.entry.value = TransitionValue.init(self.allocator);
+                result.entry.value.append(to) catch @panic("out of memory");
             }
+            self.symbols.put(symbol, {}) catch @panic("out of memory");
         }
 
         pub fn addEpsilonTransition(self: *@This(), from: usize, to: usize) void {
@@ -104,8 +121,8 @@ const nfa = struct {
             if (result.found_existing) {
                 result.entry.value.append(to) catch @panic("out of memory");
             } else {
-                result.entry.value = TransitionValue.initCapacity(self.allocator, 1) catch @panic("out of memory");
-                result.entry.value.appendAssumeCapacity(to);
+                result.entry.value = TransitionValue.init(self.allocator);
+                result.entry.value.append(to) catch @panic("out of memory");
             }
         }
 
@@ -197,6 +214,137 @@ const nfa = struct {
 
             return resulting;
         }
+
+        // TODO Avaliar se faz sentido
+        /// Returns all (non-epsilon) symbol transitions for a given state.
+        /// The caller owns the returned memory
+        pub fn getTransitionsForState(self: *const @This(), state: usize) AutoHashMap(Symbol, usize) {
+            var transitions = AutoHashMap(Symbol, usize).init(self.allocator);
+            errdefer transitions.deinit();
+
+            var iter = self.transitions.iterator();
+            while (iter.next()) |transition| {
+                if (transition.key.from != state) continue;
+
+                assert(transition.value.items.len < std.math.maxInt(u32));
+
+                const new_capacity: u32 = transitions.count() + @truncate(u32, transition.value.items.len);
+                transitions.ensureCapacity(new_capacity) catch @panic("out of memory");
+                for (transition.value.items) |t| {
+                    transitions.putAssumeCapacityNoClobber(transition.key.symbol, t);
+                }
+            }
+            return transitions;
+        }
+
+        // TODO Avaliar se faz sentido
+        /// Returns the epsilon closure for a given state.
+        /// The caller owns the returned memory
+        pub fn getEpsilonClosure(self: *const @This(), state: usize) ArrayList(usize) {
+            var e_closure = ArrayList(usize).init(self.allocator);
+            errdefer e_closure.deinit();
+
+            e_closure.append(state) catch @panic("out of memory");
+            var iter = self.e_transitions.iterator();
+            while (iter.next()) |e_transition| {
+                if (e_transition.key.from != state) continue;
+
+                // TODO is there a better way to append an arraylist into another?
+                e_closure.ensureCapacity(e_closure.items.len + e_transition.value.items.len) catch @panic("out of memory");
+                for (e_transition.value.items) |t| {
+                    e_closure.appendAssumeCapacity(t);
+                }
+            }
+            return e_closure;
+        }
+    };
+    pub const Table = struct {
+        entries: AutoHashMap(StateId, EntryValue),
+
+        pub const EntryValue = struct {
+            transitions: AutoHashMap(Symbol, StateId),
+
+            pub fn init(allocator: *Allocator) @This() {
+                return .{.transitions = AutoHashMap(Symbol, StateId).init(allocator)};
+            }
+        };
+        
+        pub fn init(allocator: *Allocator) @This() {
+            return .{.entries = AutoHashMap(StateId, EntryValue).init(allocator)};
+        }
+
+        pub fn deinit(self: *@This()) void {
+            self.entries.deinit();
+        }
+
+        pub fn addTransition(self: *@This(), from: StateId, symbol: Symbol, to: StateId) void {
+            // TODO
+            unreachable;
+        }
+
+        pub fn load(self: *@This(), g: *Graph) void {
+            var visited_states = AutoHashMap(StateId, void).init(g.allocator);
+            g.getInStateConst().loadTable(self, &visited_states);
+        }
+    };
+};
+pub const dfa = struct {
+    // TODO Avaliar esta Tabela e sua contrução
+    pub const State = struct {
+        accepting: bool,
+    };
+    pub const Transition = AutoHashMap(nfa.Symbol, usize);
+    pub const Table = struct {
+        allocator: *Allocator,
+        states: ArrayList(State),
+        initial_state: usize,
+
+        pub fn init(allocator: *Allocator) @This() {
+            return @This() {
+                .allocator = allocator,
+                .states = ArrayList(State).init(allocator),
+                .initial_state = undefined,
+            };
+        }
+
+        pub fn deinit(self: *@This()) void {
+            self.states.deinit();
+        }
+
+        pub fn load(self: *@This(), g: *const nfa.Graph) void {
+            const initial_nfa_state: usize = g.nfa.in;
+            const initial_nfa_state_e_closure: ArrayList(usize) = g.getEpsilonClosure(initial_nfa_state);
+            const initial_nfa_state_transitions: AutoHashMap(nfa.Symbol, usize) = g.getTransitionsForState(initial_nfa_state);
+
+            self.initial_state = self.addState(g, initial_nfa_state_e_closure.items);
+            var initial_dfa_state: *State = self.getState(self.initial_state);
+
+            const StatesQueue = TailQueue(usize);
+            var states_queue = StatesQueue{};
+            var initial_state_node = StatesQueue.Node{ .data = self.initial_state };
+            states_queue.append(&initial_state_node);
+            while (states_queue.len > 0) {
+                if (states_queue.popFirst()) |state| {
+                    // var iter = 
+                }
+            }
+        }
+
+        pub fn addState(self: *@This(), g: *const nfa.Graph, nfa_states: []usize) usize {
+            var accepting = false;
+            for (nfa_states) |state_id| {
+                if (g.getStateConst(state_id).accepting) {
+                    accepting = true;
+                    break;
+                }
+            }
+            self.states.append(State{ .accepting = accepting }) catch @panic("out of memory");
+            return self.states.items.len - 1;
+        }
+
+        pub inline fn getState(self: *@This(), index: usize) *State {
+            return &self.states.items[index];
+        }
     };
 };
 
@@ -216,13 +364,11 @@ test "nfa: basics" {
     expectEqual(s0, 0);
     expect(!g.getState(s0).accepting);
     expectEqual(g.getState(s0).id, s0);
-    expectEqualStrings(g.getState(s0).label, "S0");
 
     const s1: usize = g.addState(true);
     expectEqual(s1, 1);
     expect(g.getState(s1).accepting);
     expectEqual(g.getState(s1).id, s1);
-    expectEqualStrings(g.getState(s1).label, "S1");
 
     g.addSymbolTransition(s0, 'a', s1);
     g.addEpsilonTransition(s1, s0);
@@ -236,7 +382,9 @@ test "nfa: elementary machines: char" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const allocator: *Allocator = &arena.allocator;
+
     var g: nfa.Graph = nfa.Graph.init(allocator);
+    defer g.deinit();
 
     const s: nfa.Symbol = 'a';
     const a = g.char(s);
@@ -255,6 +403,8 @@ test "nfa: elementary machines: char" {
     expectEqual(s, transition.?.key.symbol);
     expectEqual(@as(usize, 1), transition.?.value.items.len);
     expectEqual(a.out, transition.?.value.items[0]);
+    expectEqual(@as(u32, 1), g.symbols.count());
+    expect(g.symbols.contains('a'));
 
     // epsilon transitions expectations
     expectEqual(@as(usize, 0), g.e_transitions.count());
@@ -264,7 +414,9 @@ test "nfa: elementary machines: epsilon" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const allocator: *Allocator = &arena.allocator;
+
     var g: nfa.Graph = nfa.Graph.init(allocator);
+    defer g.deinit();
 
     const e = g.epsilon();
 
@@ -275,6 +427,7 @@ test "nfa: elementary machines: epsilon" {
 
     // symbol transitions expectations
     expectEqual(@as(usize, 0), g.transitions.count());
+    expectEqual(@as(u32, 0), g.symbols.count());
 
     // epsilon transitions expectations
     expectEqual(@as(usize, 1), g.e_transitions.count());
@@ -290,7 +443,9 @@ test "nfa: elementary operators: concat" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const allocator: *Allocator = &arena.allocator;
+
     var g: nfa.Graph = nfa.Graph.init(allocator);
+    defer g.deinit();
 
     const a = g.char('a');
     const b = g.char('b');
@@ -309,6 +464,9 @@ test "nfa: elementary operators: concat" {
 
     // symbol transitions expectations
     expectEqual(@as(usize, 2), g.transitions.count());
+    expectEqual(@as(u32, 2), g.symbols.count());
+    expect(g.symbols.contains('a'));
+    expect(g.symbols.contains('b'));
 
     // epsilon transitions expectations
     expectEqual(@as(usize, 1), g.e_transitions.count());
@@ -324,7 +482,9 @@ test "nfa: elementary operators: disjunction (op: '|')" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const allocator: *Allocator = &arena.allocator;
+
     var g: nfa.Graph = nfa.Graph.init(allocator);
+    defer g.deinit();
 
     const a = g.char('a');
     const b = g.char('b');
@@ -341,6 +501,9 @@ test "nfa: elementary operators: disjunction (op: '|')" {
 
     // symbol transitions expectations
     expectEqual(@as(usize, 2), g.transitions.count());
+    expectEqual(@as(u32, 2), g.symbols.count());
+    expect(g.symbols.contains('a'));
+    expect(g.symbols.contains('b'));
 
     // epsilon transitions expectations
     // 1: key=(a_or_b.in), value=[a.in, b.in]
@@ -353,7 +516,9 @@ test "nfa: elementary operators: zeroOrMore (kleene star) (op: '*')" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const allocator: *Allocator = &arena.allocator;
+
     var g: nfa.Graph = nfa.Graph.init(allocator);
+    defer g.deinit();
 
     const a = g.char('a');
     const m = g.zeroOrMore(a);
@@ -379,7 +544,9 @@ test "nfa: syntatic sugar: oneOrMore (op: '+')" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const allocator: *Allocator = &arena.allocator;
+
     var g: nfa.Graph = nfa.Graph.init(allocator);
+    defer g.deinit();
 
     const a = g.char('a');
     const m = g.oneOrMore(a);
@@ -403,7 +570,9 @@ test "nfa: syntatic sugar: optional (op: '?')" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const allocator: *Allocator = &arena.allocator;
+
     var g: nfa.Graph = nfa.Graph.init(allocator);
+    defer g.deinit();
 
     const a = g.char('a');
     const m = g.optional(a);
@@ -427,7 +596,9 @@ test "nfa: syntatic sugar: range ([X-Y])" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const allocator: *Allocator = &arena.allocator;
+
     var g: nfa.Graph = nfa.Graph.init(allocator);
+    defer g.deinit();
 
     const digit = g.range('0', '9');
 
@@ -441,4 +612,39 @@ test "nfa: syntatic sugar: range ([X-Y])" {
 
     // epsilon transitions expectations
     expectEqual(@as(usize, 0), g.e_transitions.count());
+}
+
+test "nfa: table: load" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator: *Allocator = &arena.allocator;
+
+    var g: nfa.Graph = nfa.Graph.init(allocator);
+    defer g.deinit();
+
+    g.nfa = g.disjunction(g.char('a'), g.char('b'));
+
+    // TODO Avaliar este teste e sua implementacao
+    var table = nfa.Table.init(allocator);
+    defer table.deinit();
+
+    table.load(&g);
+}
+
+test "dfa: table: load" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator: *Allocator = &arena.allocator;
+
+    var g: nfa.Graph = nfa.Graph.init(allocator);
+    defer g.deinit();
+
+    g.nfa = g.disjunction(g.char('a'), g.char('b'));
+
+    // TODO Avaliar este teste e sua implementacao
+
+    var table: dfa.Table = dfa.Table.init(allocator);
+    defer table.deinit();
+
+    table.load(&g);
 }

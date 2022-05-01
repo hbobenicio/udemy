@@ -8,8 +8,14 @@
 #include <cassert>
 #include <sstream>
 #include <string_view>
+#include <iomanip>
 
 using namespace std;
+
+static string string_from_symbol(const std::string& symbol)
+{
+    return (symbol == EPSILON) ? "ε" : symbol;
+}
 
 namespace fa::nfa
 {
@@ -37,7 +43,7 @@ namespace fa::nfa
 
     bool GraphDumpVisitor::visitTransition(const State* from, const std::string& symbol, const State* to)
     {
-        std::string symbol_label = (symbol == EPSILON) ? "ε" : symbol;
+        std::string symbol_label = string_from_symbol(symbol);
 
         auto from_label = this->state_labels.find(from);
         assert(from_label != this->state_labels.end());
@@ -80,6 +86,70 @@ namespace fa::nfa
             file << transition_text << ";\n";
         }
         file << "}\n";
+    }
+
+    bool TransitionsTableVisitor::visitNFA(NFA nfa)
+    {
+        this->transitions_table.starting = nfa.in.get();
+        return true;
+    }
+
+    bool TransitionsTableVisitor::visitState(const State* state)
+    {
+        // setting the state's label
+        std::string state_label = "S" + to_string(this->state_count);
+        this->state_labels[state] = state_label;
+        this->state_count++;
+
+        cerr << "[DEBUG] [TransitionsTableVisitor] visiting state ";
+        cerr << state_label << " at " << state << '\n';
+
+        // this will initialize the table entry for this state.
+        // it may not have any transition (so visitTransition will never get called for this).
+        this->transitions_table.table[state];
+        // saving epsilon closure for this state
+        this->transitions_table.epsilon_closures[state] = state->get_epsilon_closure();
+        return true;
+    }
+
+    bool TransitionsTableVisitor::visitTransition(const State* from, const std::string& symbol, const State* to)
+    {
+        cerr << "[DEBUG] [TransitionsTableVisitor] visiting transition ";
+        cerr << "{ from: " << this->state_labels[from];
+        cerr << ", symbol: " << string_from_symbol(symbol);
+        cerr << ", to: " << this->state_labels[to] << "}\n";
+
+        this->transitions_table.table[from][symbol].push_back(to);
+        return true;
+    }
+
+    const TransitionsTable& TransitionsTableVisitor::get_transitions_table() const
+    {
+        return transitions_table;
+    }
+
+    std::ostream& operator<<(std::ostream& os, const TransitionsTable& transitions_table)
+    {
+        for (const auto& [state, transitions]: transitions_table.table) {
+            if (state == transitions_table.starting) {
+                os << " >S(";
+            } else if (state->is_accepting()) {
+                os << " .S(";
+            } else {
+                os << "  S(";
+            }
+            os << state << "): [";
+            for (const auto& [symbol, next_states]: transitions) {
+                os << string_from_symbol(symbol);
+                os << " -> {";
+                for (const auto& next_state: next_states) {
+                    os << "S(" << next_state << "), ";
+                }
+                os << "}";
+            } 
+            os << "]\n";
+        }
+        return os;
     }
 
     NFA::NFA(std::shared_ptr<State> in, std::shared_ptr<State> out)
@@ -247,7 +317,7 @@ namespace fa::nfa
 
         visitor.visitNFA(*this);
         this->in->accept(visitor, visited_states);
-        this->in->accept(visitor, visited_states);
+        this->out->accept(visitor, visited_states);
     }
 
     bool NFA::matches(string_view input) const

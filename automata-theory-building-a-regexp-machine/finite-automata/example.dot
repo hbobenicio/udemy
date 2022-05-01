@@ -1,9 +1,0 @@
-digraph NFA {
-    rankdir=LR;
-
-    /* Entities */
-    IN;
-    OUT [shape="doublecircle"]
-
-    IN -> OUT [label="ε"];
-}

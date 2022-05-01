@@ -9,16 +9,16 @@
 using namespace std;
 using namespace fa::nfa;
 
-static void t1()
+static void test_fundamental_machines()
 {
-    cout << "T1: ";
+    cout << __func__ << ": ";
     {
         NFA regex{'a'};
         assert(regex.matches("a"));
         assert(!regex.matches(""));
         assert(!regex.matches("b"));
 
-        GraphDumpVisitor visitor{"T1: basic: single character: regex='a'"};
+        GraphDumpVisitor visitor{"basic: single character: regex='a'"};
         regex.accept(visitor);
         visitor.dump_graph("/tmp/t1-basic-single-char.dot");
     }
@@ -28,17 +28,17 @@ static void t1()
         assert(regex.matches(""));
         assert(!regex.matches("a"));
 
-        GraphDumpVisitor visitor{"T1: basic: epsilon: regex=ε"};
+        GraphDumpVisitor visitor{"basic: epsilon: regex=ε"};
         regex.accept(visitor);
         visitor.dump_graph("/tmp/t1-basic-epsilon.dot");
     }
 
-    cout << "OK!\n";
+    cout << "OK.\n";
 }
 
-static void t2()
+static void test_operator_concat()
 {
-    cout << "T2: ";
+    cout << __func__ << ": ";
 
     NFA regex = concat(
         NFA{'a'},
@@ -47,16 +47,16 @@ static void t2()
     );
     assert(regex.matches("abc"));
 
-    cout << "OK!\n";
+    cout << "OK.\n";
 
-    GraphDumpVisitor visitor{"T2: operator: concat: regex='abc'"};
+    GraphDumpVisitor visitor{"operator: concat: regex='abc'"};
     regex.accept(visitor);
     visitor.dump_graph("/tmp/t2-op-concat.dot");
 }
 
-static void t3()
+static void test_operator_union()
 {
-    cout << "T3: ";
+    cout << __func__ << ": ";
 
     NFA regex = disjoint(
         NFA{'a'},
@@ -67,16 +67,16 @@ static void t3()
     assert(regex.matches("b"));
     assert(regex.matches("c"));
 
-    cout << "OK!\n";
+    cout << "OK.\n";
 
-    GraphDumpVisitor visitor{"T3: operator: union '|': regex='a|b|c'"};
+    GraphDumpVisitor visitor{"operator: union '|': regex='a|b|c'"};
     regex.accept(visitor);
     visitor.dump_graph("/tmp/t3-op-union.dot");
 }
 
-static void t4()
+static void test_operator_kleene_naive()
 {
-    cout << "T4: ";
+    cout << __func__ << ": ";
 
     NFA regex = kleene_naive(NFA{'a'});
     assert(regex.matches(""));
@@ -85,9 +85,9 @@ static void t4()
     assert(regex.matches("aaa"));
     assert(!regex.matches("b"));
 
-    cout << "OK!\n";
+    cout << "OK.\n";
 
-    GraphDumpVisitor visitor{"T4: operator: kleene_naive star '*': regex='a*'"};
+    GraphDumpVisitor visitor{"operator: kleene_naive star '*': regex='a*'"};
     regex.accept(visitor);
     visitor.dump_graph("/tmp/t4-op-kleene-naive.dot");
 }
@@ -95,9 +95,9 @@ static void t4()
 /**
  * xy*|z
  */
-static void t5()
+static void test_complex_precedence()
 {
-    cout << "T5: ";
+    cout << __func__ << ": ";
 
     NFA regex = disjoint(
         concat(
@@ -114,16 +114,16 @@ static void t5()
     assert(!regex.matches("y"));
     assert(!regex.matches("xz"));
 
-    cout << "OK!\n";
+    cout << "OK.\n";
     
-    GraphDumpVisitor visitor{"T5: complex: precedence: regex='xy*|z'"};
+    GraphDumpVisitor visitor{"complex: precedence: regex='xy*|z'"};
     regex.accept(visitor);
     visitor.dump_graph("/tmp/t5-complex-precedence.dot");
 }
 
-static void t6()
+static void test_sugar_plus_naive()
 {
-    cout << "T6: ";
+    cout << __func__ << ": ";
 
     NFA regex = plus_naive(NFA{'a'});
     assert(!regex.matches(""));
@@ -132,16 +132,16 @@ static void t6()
     assert(regex.matches("aaa"));
     assert(!regex.matches("b"));
 
-    cout << "OK!\n";
+    cout << "OK.\n";
 
-    GraphDumpVisitor visitor{"T6: syntatic sugar: plus '+' naive approach: regex='a+'"};
+    GraphDumpVisitor visitor{"syntatic sugar: plus '+' naive approach: regex='a+'"};
     regex.accept(visitor);
     visitor.dump_graph("/tmp/t6-syntatic-sugar-plus-naive.dot");
 }
 
-static void t7()
+static void test_sugar_question_mark_naive()
 {
-    cout << "T7: ";
+    cout << __func__ << ": ";
 
     NFA regex = question_mark_naive(NFA{'a'});
     assert(regex.matches(""));
@@ -149,16 +149,16 @@ static void t7()
     assert(!regex.matches("aa"));
     assert(!regex.matches("b"));
 
-    cout << "OK!\n";
+    cout << "OK.\n";
 
-    GraphDumpVisitor visitor{"T7: syntatic sugar: question mark '?' naive approach: regex='a?'"};
+    GraphDumpVisitor visitor{"syntatic sugar: question mark '?' naive approach: regex='a?'"};
     regex.accept(visitor);
     visitor.dump_graph("/tmp/t7-syntatic-sugar-question-mark-naive.dot");
 }
 
-static void t8()
+static void test_sugar_digit_char_class_naive()
 {
-    cout << "T8: ";
+    cout << __func__ << ": ";
 
     NFA regex = digit_naive();
     for (size_t i = 0; i < 10; i++) {
@@ -168,16 +168,16 @@ static void t8()
     assert(!regex.matches(""));
     assert(!regex.matches("a"));
 
-    cout << "OK!\n";
+    cout << "OK.\n";
     
-    GraphDumpVisitor visitor{"T8: syntatic sugar: digit character class naive approach: regex='[\\d]'"};
+    GraphDumpVisitor visitor{"syntatic sugar: digit character class naive approach: regex='[\\d]'"};
     regex.accept(visitor);
     visitor.dump_graph("/tmp/t8-syntatic-sugar-digit-naive.dot");
 }
 
-static void t9()
+static void test_sugar_char_range_naive()
 {
-    cout << "T9: ";
+    cout << __func__ << ": ";
 
     NFA regex = char_range_naive('1', '3');
     assert(!regex.matches("0"));
@@ -186,16 +186,16 @@ static void t9()
     assert(regex.matches("3"));
     assert(!regex.matches("4"));
 
-    cout << "OK!\n";
+    cout << "OK.\n";
     
-    GraphDumpVisitor visitor{"T9: syntatic sugar: character range/class naive approach: regex='[0-3]'"};
+    GraphDumpVisitor visitor{"syntatic sugar: character range/class naive approach: regex='[0-3]'"};
     regex.accept(visitor);
     visitor.dump_graph("/tmp/t9-syntatic-sugar-char-range-naive.dot");
 }
 
-static void t10()
+static void test_optimizations_operator_kleene()
 {
-    cout << "T10: ";
+    cout << __func__ << ": ";
 
     NFA regex = zeroOrMore(NFA{'a'});
     assert(regex.matches(""));
@@ -204,16 +204,16 @@ static void t10()
     assert(regex.matches("aaa"));
     assert(!regex.matches("b"));
 
-    cout << "OK!\n";
+    cout << "OK.\n";
 
-    GraphDumpVisitor visitor{"T10: optimizations: kleene (zeroOrMore): regex='a*'"};
+    GraphDumpVisitor visitor{"optimizations: kleene (zeroOrMore): regex='a*'"};
     regex.accept(visitor);
     visitor.dump_graph("/tmp/t10-optimization-kleene.dot");
 }
 
-static void t11()
+static void test_optimizations_operator_plus()
 {
-    cout << "T11: ";
+    cout << __func__ << ": ";
 
     NFA regex = oneOrMore(NFA{'a'});
     assert(!regex.matches(""));
@@ -222,16 +222,16 @@ static void t11()
     assert(regex.matches("aaa"));
     assert(!regex.matches("b"));
 
-    cout << "OK!\n";
+    cout << "OK.\n";
 
-    GraphDumpVisitor visitor{"T11: optimizations: plus '+' op (oneOrMore): regex='a+'"};
+    GraphDumpVisitor visitor{"optimizations: plus '+' op (oneOrMore): regex='a+'"};
     regex.accept(visitor);
     visitor.dump_graph("/tmp/t11-optimization-plus.dot");
 }
 
-static void t12()
+static void test_optimizations_operator_question_mark()
 {
-    cout << "T12: ";
+    cout << __func__ << ": ";
 
     NFA regex = opt(NFA{'a'});
     assert(regex.matches(""));
@@ -239,16 +239,16 @@ static void t12()
     assert(!regex.matches("aa"));
     assert(!regex.matches("b"));
 
-    cout << "OK!\n";
+    cout << "OK.\n";
 
-    GraphDumpVisitor visitor{"T12: optimizations: question mark '?' op (optional): regex='a?'"};
+    GraphDumpVisitor visitor{"optimizations: question mark '?' op (optional): regex='a?'"};
     regex.accept(visitor);
     visitor.dump_graph("/tmp/t12-optimization-question-mark.dot");
 }
 
-static void t13()
+static void test_optimizations_operator_char_range()
 {
-    cout << "T13: ";
+    cout << __func__ << ": ";
 
     NFA regex = range('0', '9');
     for (size_t i = 0; i < 10; i++) {
@@ -258,28 +258,90 @@ static void t13()
     assert(!regex.matches(""));
     assert(!regex.matches("a"));
 
-    cout << "OK!\n";
+    cout << "OK.\n";
 
-    GraphDumpVisitor visitor{"T13: optimizations: range char class op: regex='[x-y]'"};
+    GraphDumpVisitor visitor{"optimizations: range char class op: regex='[x-y]'"};
     regex.accept(visitor);
     visitor.dump_graph("/tmp/t13-optimization-range.dot");
 }
 
+static void test_epsilon_closure()
+{
+    cout << __func__ << ": ";
+    {
+        auto s1 = make_shared<State>();
+        auto s2 = make_shared<State>();
+        auto s = make_shared<State>();
+
+        s->add_transition(EPSILON, s1);
+        s->add_transition(EPSILON, s2);
+
+        const auto epsilon_closure = s->get_epsilon_closure();
+
+        assert(epsilon_closure.size() == 3);
+        assert(epsilon_closure[0] == s.get());
+        assert(epsilon_closure[1] == s1.get());
+        assert(epsilon_closure[2] == s2.get());
+    }
+    {
+        NFA regex = NFA{'a'} | NFA{'b'};
+
+        const auto epsilon_closure_in = regex.in->get_epsilon_closure();
+        assert(epsilon_closure_in.size() == 3);
+        assert(epsilon_closure_in[0] == regex.in.get());
+        
+        const auto epsilon_closure_out = regex.out->get_epsilon_closure();
+        assert(epsilon_closure_out.size() == 1);
+        assert(epsilon_closure_out[0] == regex.out.get());
+    }
+
+    cout << "OK.\n";
+}
+
+static void test_get_transitions_table()
+{
+    cout << __func__ << ":\n";
+
+    NFA regex = NFA{'a'} | NFA{'b'};
+    {
+        GraphDumpVisitor visitor{"transitions table: regex='a|b'"};
+        regex.accept(visitor);
+        visitor.dump_graph("/tmp/transitions-table-union.dot");
+    }
+    {
+        TransitionsTableVisitor visitor;
+        regex.accept(visitor);
+
+        TransitionsTable transitions_table = visitor.get_transitions_table();
+        cout << transitions_table << '\n';
+
+        assert(transitions_table.table.size() == 6);
+        assert(transitions_table.epsilon_closures.size() == transitions_table.table.size());
+        // TODO for loop to check that keys from table an epsilon closures should be the same.
+    }
+    cout << "OK.\n";
+}
+
 int main()
 {
-    t1();
-    t2();
-    t3();
-    t4();
-    t5();
-    t6();
-    t7();
-    t8();
-    t9();
-    t10();
-    t11();
-    t12();
-    t13();
+    // NFA Building Blocks Tests
+    test_fundamental_machines();
+    test_operator_concat();
+    test_operator_union();
+    test_operator_kleene_naive();
+    test_complex_precedence();
+    test_sugar_plus_naive();
+    test_sugar_question_mark_naive();
+    test_sugar_digit_char_class_naive();
+    test_sugar_char_range_naive();
+    test_optimizations_operator_kleene();
+    test_optimizations_operator_plus();
+    test_optimizations_operator_question_mark();
+    test_optimizations_operator_char_range();
+
+    // NFA Table Generation Tests
+    test_epsilon_closure();
+    test_get_transitions_table();
 
     return 0;
 }

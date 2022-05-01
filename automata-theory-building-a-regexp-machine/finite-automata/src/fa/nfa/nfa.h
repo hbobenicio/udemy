@@ -44,6 +44,29 @@ namespace fa::nfa
         void dump_graph(const std::string& file_path) const;
     };
 
+    struct TransitionsTable {
+        const State* starting;
+        std::map<const State*, std::map<std::string, std::vector<const State*>>> table;
+        std::map<const State*, std::vector<const State*>> epsilon_closures;
+    };
+
+    std::ostream& operator<<(std::ostream& os, const TransitionsTable& transitions_table);
+
+    class TransitionsTableVisitor: public Visitor
+    {
+    protected:
+        TransitionsTable transitions_table;
+        size_t state_count = 0;
+        std::map<const State*, std::string> state_labels;
+
+        bool visitNFA(NFA nfa) override;
+        bool visitState(const State* state) override;
+        bool visitTransition(const State* from, const std::string& symbol, const State* to) override;
+
+    public:
+        const TransitionsTable& get_transitions_table() const;
+    };
+
     /**
      * NFA Fragment.
      * 
@@ -54,10 +77,6 @@ namespace fa::nfa
      * TODO rename this to Fragment maybe. Analyze later if this makes sense...
      */
     class NFA {
-    // protected:
-        // std::shared_ptr<State> in;
-        // std::shared_ptr<State> out;
-
     public:
         std::shared_ptr<State> in;
         std::shared_ptr<State> out;

@@ -16,13 +16,6 @@ namespace fa::nfa
 
     void State::add_transition(const string& symbol, std::shared_ptr<State> state)
     {
-        // auto states = this->transitions.find(symbol);
-        // if (states == this->transitions.end()) {
-        //     vector<shared_ptr<State>> new_states = { state };
-        //     this->transitions[symbol] = new_states;
-        // } else {
-        //     states->second.emplace_back(state);
-        // }
         this->transitions[symbol].push_back(state);
     }
 
@@ -36,10 +29,7 @@ namespace fa::nfa
         return optional{ states->second };
     }
 
-    void State::accept(
-        Visitor& visitor,
-        std::set<const State*>& visited_states
-    ) const
+    void State::accept(Visitor& visitor, std::set<const State*>& visited_states) const
     {
         if (visited_states.find(this) != visited_states.end()) {
             return;
@@ -121,6 +111,31 @@ namespace fa::nfa
         return false;
     }
 
+    vector<const State*> State::get_epsilon_closure() const
+    {
+        set<const State*> visited_states;
+        vector<const State*> epsilon_states;
+
+        this->get_epsilon_states(visited_states, epsilon_states);
+
+        return epsilon_states;
+    }
+
+    void State::get_epsilon_states(set<const State*>& visited_states, vector<const State*>& epsilon_states) const
+    {
+        if (visited_states.find(this) != visited_states.end()) {
+            return;
+        }
+        visited_states.insert(this);
+        epsilon_states.push_back(this);
+
+        if (auto next_states = this->get_transitions(EPSILON); next_states) {
+            for (auto next_state: *next_states) {
+                next_state->get_epsilon_states(visited_states, epsilon_states);
+            }
+        }
+    }
+
     bool State::is_accepting() const
     {
         return this->accepting;
@@ -129,5 +144,10 @@ namespace fa::nfa
     void State::set_accepting(bool accepting)
     {
         this->accepting = accepting;
+    }
+
+    const std::map<std::string, States>& State::get_transitions() const
+    {
+        return this->transitions;
     }
 }

@@ -15,6 +15,8 @@ project('finite-automata', 'cpp',
 sources = [
     'src/fa/nfa/state.cpp',
     'src/fa/nfa/nfa.cpp',
+    'src/fa/nfa/graph.cpp',
+    'src/fa/dfa/dfa.cpp',
     'src/main.cpp',
 ]
 
